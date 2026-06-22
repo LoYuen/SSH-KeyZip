@@ -1,30 +1,23 @@
 # Changelog
 
-## 1.0.4
+## v1.1.0
 
-- Reworked Windows PowerShell native command execution.
-- Preserved empty passphrases correctly when calling `ssh-keygen -N ""`.
-- Replaced ZIP creation with explicit `id_ed25519` and `id_ed25519.pub` entries.
-- Improved Bash argument validation and ZIP packaging.
-- Added a CI smoke test with a mocked `ssh-keygen`.
+- Rebuilt the Windows and Bash scripts from a clean implementation.
+- Kept standard OpenSSH names: `id_ed25519` and `id_ed25519.pub`.
+- Added post-generation checks for private key header, private key footer, public key prefix, and public key readability.
+- ZIP archives now contain only `id_ed25519` and `id_ed25519.pub` at the root.
+- Added collision handling when the same timestamp already exists.
+- Added a real GitHub Actions smoke test that runs `ssh-keygen`, verifies output format, and checks ZIP contents on Ubuntu.
 
-## 1.0.3
+## v1.0.5
 
-- Fixed Windows PowerShell empty passphrase handling.
-- Replaced the Windows one-line command with a PowerShell-safe version.
-- Kept output naming and ZIP packaging unchanged.
+- Added generated key format checks before ZIP packaging.
+- Added public key Ed25519 blob validation in the Windows script.
 
-## 1.0.2
+## v1.0.4
 
-- Improved Windows script execution from remote raw URLs.
+- Reworked Windows `ssh-keygen` invocation to preserve empty passphrases.
 
-## 1.0.1
-
-- Improved Windows empty passphrase handling.
-
-## 1.0.0
+## v1.0.0
 
 - Initial release.
-- Added Windows PowerShell script.
-- Added macOS / Linux / VPS Bash script.
-- Added local ZIP packaging.

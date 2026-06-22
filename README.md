@@ -12,33 +12,36 @@
   <img alt="powershell" src="https://img.shields.io/badge/PowerShell-Windows-blue.svg">
 </p>
 
-## 项目简介
+## 简介
 
-SSH-KeyZip 是一个小型 SSH 密钥生成工具。
+SSH-KeyZip 用来在本机生成一组 Ed25519 SSH 密钥，并把结果打包成 `.zip` 文件。
 
-它只做一件事：在本机生成一组 Ed25519 SSH 密钥，并按需打包成标准 `.zip` 文件。
+脚本只调用系统里的 `ssh-keygen`，不会上传密钥，也不会生成公网下载链接。私钥只保存在你的电脑或服务器上。
 
-适合新电脑初始化、VPS 登录、GitHub SSH 认证、GitLab SSH 认证等场景。
+适合这些场景：
 
-> 私钥只在本机生成。脚本不会上传密钥，也不会创建公网下载链接。
+- 新电脑初始化 SSH 密钥
+- VPS 登录密钥准备
+- GitHub / GitLab SSH 认证
+- 需要把 SSH 密钥本地打包保存
 
-## 核心功能
+## 功能
 
 - 生成 Ed25519 SSH 密钥
-- 打包为标准 `.zip`
+- 输出标准 OpenSSH 格式
+- 生成 `id_ed25519` 和 `id_ed25519.pub`
+- 生成本地 `.zip` 文件
 - 支持 Windows / macOS / Linux / VPS
 - 默认输出到桌面，没有桌面时输出到当前目录
-- 支持自定义输出目录
-- 支持自定义密钥备注
-- 支持给私钥设置密码
-- 不写入、不覆盖现有 `~/.ssh` 密钥
+- 支持自定义输出目录、密钥备注、私钥密码
+- 不覆盖已有密钥
 - 不上传、不托管、不外发私钥
 
 ## 一键使用
 
 ### Windows PowerShell
 
-打开 PowerShell，直接运行：
+打开 PowerShell，运行：
 
 ```powershell
 $url = 'https://raw.githubusercontent.com/LoYuen/SSH-KeyZip/main/scripts/keygen.ps1'; $path = Join-Path $env:TEMP 'ssh-keyzip.ps1'; Invoke-WebRequest -UseBasicParsing -Uri $url -OutFile $path; powershell -NoProfile -ExecutionPolicy Bypass -File $path
@@ -46,23 +49,75 @@ $url = 'https://raw.githubusercontent.com/LoYuen/SSH-KeyZip/main/scripts/keygen.
 
 ### macOS / Linux / VPS
 
+打开终端，运行：
+
 ```bash
 curl -fsSL https://raw.githubusercontent.com/LoYuen/SSH-KeyZip/main/scripts/keygen.sh | bash
 ```
 
-运行完成后，会显示文件夹路径、ZIP 路径和公钥内容。
+## 生成结果
+
+运行完成后会生成一个文件夹：
+
+```text
+ssh-keyzip-20260622-230000/
+├── id_ed25519
+└── id_ed25519.pub
+```
+
+同时会生成一个 ZIP 文件：
+
+```text
+ssh-keyzip-20260622-230000.zip
+```
+
+ZIP 里面只有两个文件：
+
+```text
+id_ed25519
+id_ed25519.pub
+```
+
+## 文件格式
+
+私钥文件：
+
+```text
+id_ed25519
+```
+
+私钥没有后缀，开头是：
+
+```text
+-----BEGIN OPENSSH PRIVATE KEY-----
+```
+
+结尾是：
+
+```text
+-----END OPENSSH PRIVATE KEY-----
+```
+
+公钥文件：
+
+```text
+id_ed25519.pub
+```
+
+公钥是一整行，开头是：
+
+```text
+ssh-ed25519 AAAA...
+```
+
+`id_ed25519` 是私钥，不要发给别人。  
+`id_ed25519.pub` 是公钥，可以添加到 GitHub、GitLab、服务器或 VPS 面板。
 
 ## 本地运行
 
+克隆仓库后运行：
+
 ### Windows
-
-双击运行：
-
-```text
-keygen.cmd
-```
-
-或在 PowerShell 中运行：
 
 ```powershell
 powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\keygen.ps1
@@ -74,44 +129,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\keygen.ps1
 bash scripts/keygen.sh
 ```
 
-## 生成结果
-
-默认会生成一个文件夹：
-
-```text
-ssh-keyzip-20260622-230000/
-├── id_ed25519
-└── id_ed25519.pub
-```
-
-同时生成一个 ZIP 文件：
-
-```text
-ssh-keyzip-20260622-230000.zip
-```
-
-文件说明：
-
-```text
-id_ed25519      私钥，只能自己保存
-id_ed25519.pub  公钥，可以添加到 GitHub、GitLab、服务器或 VPS 面板
-```
-
 ## 常用参数
-
-### 不生成 ZIP
-
-Windows：
-
-```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\keygen.ps1 -NoZip
-```
-
-macOS / Linux / VPS：
-
-```bash
-bash scripts/keygen.sh --no-zip
-```
 
 ### 指定输出目录
 
@@ -127,21 +145,21 @@ macOS / Linux / VPS：
 bash scripts/keygen.sh --out "$HOME/Desktop"
 ```
 
-### 自定义密钥备注
+### 不生成 ZIP
 
 Windows：
 
 ```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\keygen.ps1 -Comment "me@my-laptop"
+powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\keygen.ps1 -NoZip
 ```
 
 macOS / Linux / VPS：
 
 ```bash
-bash scripts/keygen.sh --comment "me@my-laptop"
+bash scripts/keygen.sh --no-zip
 ```
 
-### 给私钥设置密码
+### 设置私钥密码
 
 Windows：
 
@@ -155,71 +173,26 @@ macOS / Linux / VPS：
 bash scripts/keygen.sh --ask-passphrase
 ```
 
-也可以用环境变量传入密码：
+## Windows 说明
 
-```bash
-SSH_KEY_PASSPHRASE='your-passphrase' bash scripts/keygen.sh
+Windows 需要系统里有 OpenSSH Client。Windows 10 / Windows 11 通常已经自带。
+
+如果提示找不到 `ssh-keygen`，可以到：
+
+```text
+设置 → 应用 → 可选功能 → 添加可选功能 → OpenSSH Client
 ```
 
-## 添加到 GitHub
-
-1. 打开生成的文件夹。
-2. 找到 `id_ed25519.pub`。
-3. 用记事本、VS Code 或其他文本编辑器打开。
-4. 复制里面的一整行内容。
-5. 打开 GitHub：`Settings` → `SSH and GPG keys` → `New SSH key`。
-6. 粘贴公钥并保存。
-
-不要把 `id_ed25519` 上传到 GitHub。
-
-## VPS 下载说明
-
-如果在 VPS 上运行脚本，建议从自己的电脑下载 ZIP：
-
-```bash
-scp 用户名@VPS_IP:/path/to/ssh-keyzip-*.zip .
-```
-
-不建议在 VPS 上开公网 HTTP 下载链接。ZIP 里可能包含私钥，公开链接会带来风险。
-
-## 上传到 GitHub
-
-### 网页上传
-
-1. 打开 GitHub。
-2. 点击右上角 `+` → `New repository`。
-3. 仓库名填写：`SSH-KeyZip`。
-4. 选择 `Public`。
-5. 不要勾选自动创建 README、.gitignore 或 License。
-6. 创建仓库。
-7. 点击 `uploading an existing file`。
-8. 打开本项目文件夹，进入文件夹内部。
-9. 全选里面的文件和文件夹后拖到上传页面。
-10. 填写提交信息，例如：`Initial release`。
-11. 点击 `Commit changes`。
-
-上传后的仓库根目录应该直接看到 `README.md`、`scripts`、`LICENSE` 等文件。
-
-不要把最外层 `SSH-KeyZip` 文件夹拖进去，否则 README 不会显示在仓库首页。
-
-### 命令行上传
-
-```bash
-git init
-git add .
-git commit -m "Initial release"
-git branch -M main
-git remote add origin https://github.com/LoYuen/SSH-KeyZip.git
-git push -u origin main
-```
+安装后重新打开 PowerShell 再运行。
 
 ## 安全提醒
 
-- `id_ed25519` 是私钥，不要发给别人。
-- `id_ed25519.pub` 是公钥，可以放到 GitHub、GitLab 或服务器。
-- 如果私钥泄露，立刻删除旧公钥，重新生成一组密钥。
-- 不要把包含私钥的 ZIP 放到公开网盘、公开仓库或公网链接。
+不要把 `id_ed25519` 发给任何人。  
+不要把包含私钥的 ZIP 放到公网链接。  
+上传到 GitHub / GitLab / 服务器后台的是 `id_ed25519.pub`。
 
-## 开源协议
+如果私钥已经泄露，请删除旧公钥，重新生成一组新的密钥。
+
+## 许可证
 
 MIT License

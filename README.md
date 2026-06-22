@@ -41,13 +41,13 @@ SSH-KeyZip 是一个小型 SSH 密钥生成工具。
 ### Windows PowerShell
 
 ```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -Command "irm https://raw.githubusercontent.com/YOUR_GITHUB_NAME/SSH-KeyZip/main/scripts/keygen.ps1 | iex"
+powershell -NoProfile -ExecutionPolicy Bypass -Command "irm https://raw.githubusercontent.com/LoYuen/SSH-KeyZip/main/scripts/keygen.ps1 | iex"
 ```
 
 ### macOS / Linux / VPS
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/YOUR_GITHUB_NAME/SSH-KeyZip/main/scripts/keygen.sh | bash
+curl -fsSL https://raw.githubusercontent.com/LoYuen/SSH-KeyZip/main/scripts/keygen.sh | bash
 ```
 
 运行完成后会输出文件夹路径、ZIP 路径和公钥内容。

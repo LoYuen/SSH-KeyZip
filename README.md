@@ -20,28 +20,28 @@ SSH-KeyZip 是一个小型 SSH 密钥生成工具。
 
 适合新电脑初始化、VPS 登录、GitHub SSH 认证、GitLab SSH 认证等场景。
 
-> 私钥只会生成在本机。脚本不会上传密钥，也不会创建公网下载链接。
+> 私钥只在本机生成。脚本不会上传密钥，也不会创建公网下载链接。
 
 ## 核心功能
 
-- Ed25519 SSH 密钥生成
-- 标准 `.zip` 打包
-- Windows / macOS / Linux / VPS 可用
+- 生成 Ed25519 SSH 密钥
+- 打包为标准 `.zip`
+- 支持 Windows / macOS / Linux / VPS
 - 默认输出到桌面，没有桌面时输出到当前目录
 - 支持自定义输出目录
 - 支持自定义密钥备注
 - 支持给私钥设置密码
-- 不覆盖已有 `~/.ssh` 密钥
+- 不写入、不覆盖现有 `~/.ssh` 密钥
 - 不上传、不托管、不外发私钥
 
 ## 一键使用
 
-把下面命令里的 `YOUR_GITHUB_NAME` 和 `SSH-KeyZip` 改成你的 GitHub 用户名和仓库名。
-
 ### Windows PowerShell
 
+打开 PowerShell，直接运行：
+
 ```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -Command "irm https://raw.githubusercontent.com/LoYuen/SSH-KeyZip/main/scripts/keygen.ps1 | iex"
+$url = 'https://raw.githubusercontent.com/LoYuen/SSH-KeyZip/main/scripts/keygen.ps1'; $path = Join-Path $env:TEMP 'ssh-keyzip.ps1'; Invoke-WebRequest -UseBasicParsing -Uri $url -OutFile $path; powershell -NoProfile -ExecutionPolicy Bypass -File $path
 ```
 
 ### macOS / Linux / VPS
@@ -50,7 +50,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -Command "irm https://raw.githubus
 curl -fsSL https://raw.githubusercontent.com/LoYuen/SSH-KeyZip/main/scripts/keygen.sh | bash
 ```
 
-运行完成后会输出文件夹路径、ZIP 路径和公钥内容。
+运行完成后，会显示文件夹路径、ZIP 路径和公钥内容。
 
 ## 本地运行
 
@@ -155,6 +155,12 @@ macOS / Linux / VPS：
 bash scripts/keygen.sh --ask-passphrase
 ```
 
+也可以用环境变量传入密码：
+
+```bash
+SSH_KEY_PASSPHRASE='your-passphrase' bash scripts/keygen.sh
+```
+
 ## 添加到 GitHub
 
 1. 打开生成的文件夹。
@@ -162,7 +168,7 @@ bash scripts/keygen.sh --ask-passphrase
 3. 用记事本、VS Code 或其他文本编辑器打开。
 4. 复制里面的一整行内容。
 5. 打开 GitHub：`Settings` → `SSH and GPG keys` → `New SSH key`。
-6. 粘贴公钥，保存。
+6. 粘贴公钥并保存。
 
 不要把 `id_ed25519` 上传到 GitHub。
 
@@ -178,7 +184,7 @@ scp 用户名@VPS_IP:/path/to/ssh-keyzip-*.zip .
 
 ## 上传到 GitHub
 
-### 方法一：网页上传
+### 网页上传
 
 1. 打开 GitHub。
 2. 点击右上角 `+` → `New repository`。
@@ -187,20 +193,23 @@ scp 用户名@VPS_IP:/path/to/ssh-keyzip-*.zip .
 5. 不要勾选自动创建 README、.gitignore 或 License。
 6. 创建仓库。
 7. 点击 `uploading an existing file`。
-8. 把本项目里的全部文件拖进去。
-9. 填写提交信息，例如：`Initial release`。
-10. 点击 `Commit changes`。
+8. 打开本项目文件夹，进入文件夹内部。
+9. 全选里面的文件和文件夹后拖到上传页面。
+10. 填写提交信息，例如：`Initial release`。
+11. 点击 `Commit changes`。
 
-上传完成后，把 README 里的一键命令改成你的真实地址。
+上传后的仓库根目录应该直接看到 `README.md`、`scripts`、`LICENSE` 等文件。
 
-### 方法二：命令行上传
+不要把最外层 `SSH-KeyZip` 文件夹拖进去，否则 README 不会显示在仓库首页。
+
+### 命令行上传
 
 ```bash
 git init
 git add .
 git commit -m "Initial release"
 git branch -M main
-git remote add origin https://github.com/YOUR_GITHUB_NAME/SSH-KeyZip.git
+git remote add origin https://github.com/LoYuen/SSH-KeyZip.git
 git push -u origin main
 ```
 

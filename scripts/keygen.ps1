@@ -17,31 +17,135 @@ $ErrorActionPreference = "Stop"
 
 function Get-DefaultOutBase {
     $desktop = [Environment]::GetFolderPath("Desktop")
-    if ($desktop -and (Test-Path $desktop)) {
+    if (-not [string]::IsNullOrWhiteSpace($desktop) -and (Test-Path -LiteralPath $desktop)) {
         return $desktop
     }
+
     return (Get-Location).Path
 }
 
-function New-ZipArchiveCompat {
+function ConvertTo-NativeArgument {
     param(
-        [Parameter(Mandatory=$true)][string]$SourceDir,
-        [Parameter(Mandatory=$true)][string]$ZipPath
+        [AllowEmptyString()]
+        [string]$Value = ""
     )
 
-    if (Test-Path $ZipPath) {
-        Remove-Item $ZipPath -Force
+    if ($null -eq $Value) {
+        $Value = ""
     }
+
+    $builder = New-Object System.Text.StringBuilder
+    [void]$builder.Append('"')
+
+    $backslashCount = 0
+    foreach ($char in $Value.ToCharArray()) {
+        if ($char -eq '\') {
+            $backslashCount++
+            continue
+        }
+
+        if ($char -eq '"') {
+            if ($backslashCount -gt 0) {
+                [void]$builder.Append(('\' * ($backslashCount * 2 + 1)))
+                $backslashCount = 0
+            }
+            else {
+                [void]$builder.Append('\')
+            }
+
+            [void]$builder.Append('"')
+            continue
+        }
+
+        if ($backslashCount -gt 0) {
+            [void]$builder.Append(('\' * $backslashCount))
+            $backslashCount = 0
+        }
+
+        [void]$builder.Append($char)
+    }
+
+    if ($backslashCount -gt 0) {
+        [void]$builder.Append(('\' * ($backslashCount * 2)))
+    }
+
+    [void]$builder.Append('"')
+    return $builder.ToString()
+}
+
+function Invoke-NativeCommand {
+    param(
+        [string]$FileName,
+        [object[]]$ArgumentList = @()
+    )
+
+    if ([string]::IsNullOrWhiteSpace($FileName)) {
+        throw "Native command path is empty."
+    }
+
+    $quotedArgs = @()
+    foreach ($arg in $ArgumentList) {
+        if ($null -eq $arg) {
+            $quotedArgs += (ConvertTo-NativeArgument "")
+        }
+        else {
+            $quotedArgs += (ConvertTo-NativeArgument ([string]$arg))
+        }
+    }
+
+    $psi = New-Object System.Diagnostics.ProcessStartInfo
+    $psi.FileName = $FileName
+    $psi.Arguments = [string]::Join(" ", [string[]]$quotedArgs)
+    $psi.UseShellExecute = $false
+    $psi.RedirectStandardOutput = $true
+    $psi.RedirectStandardError = $true
+
+    $process = New-Object System.Diagnostics.Process
+    $process.StartInfo = $psi
+
+    [void]$process.Start()
+    $stdout = $process.StandardOutput.ReadToEnd()
+    $stderr = $process.StandardError.ReadToEnd()
+    $process.WaitForExit()
+
+    if ($process.ExitCode -ne 0) {
+        if (-not [string]::IsNullOrWhiteSpace($stdout)) {
+            Write-Host $stdout
+        }
+
+        if (-not [string]::IsNullOrWhiteSpace($stderr)) {
+            Write-Host $stderr
+        }
+
+        throw "ssh-keygen failed with exit code $($process.ExitCode)."
+    }
+}
+
+function New-KeyZip {
+    param(
+        [string]$PrivateKeyPath,
+        [string]$PublicKeyPath,
+        [string]$ZipPath
+    )
+
+    if (Test-Path -LiteralPath $ZipPath) {
+        Remove-Item -LiteralPath $ZipPath -Force
+    }
+
+    Add-Type -AssemblyName System.IO.Compression
+    Add-Type -AssemblyName System.IO.Compression.FileSystem
+
+    $archive = [System.IO.Compression.ZipFile]::Open($ZipPath, [System.IO.Compression.ZipArchiveMode]::Create)
 
     try {
-        Compress-Archive -Path (Join-Path $SourceDir "*") -DestinationPath $ZipPath -Force -ErrorAction Stop
+        [System.IO.Compression.ZipFileExtensions]::CreateEntryFromFile($archive, $PrivateKeyPath, "id_ed25519") | Out-Null
+        [System.IO.Compression.ZipFileExtensions]::CreateEntryFromFile($archive, $PublicKeyPath, "id_ed25519.pub") | Out-Null
     }
-    catch {
-        Add-Type -AssemblyName System.IO.Compression.FileSystem
-        [System.IO.Compression.ZipFile]::CreateFromDirectory($SourceDir, $ZipPath)
+    finally {
+        $archive.Dispose()
     }
 
-    if (!(Test-Path $ZipPath)) {
+    if (!(Test-Path -LiteralPath $ZipPath)) {
         throw "ZIP creation failed: $ZipPath"
     }
 }
@@ -59,7 +163,9 @@ New-Item -ItemType Directory -Path $Out -Force | Out-Null
 
 $timestamp = Get-Date -Format "yyyyMMdd-HHmmss"
 if ([string]::IsNullOrWhiteSpace($Comment)) {
-    $Comment = "$env:USERNAME@$env:COMPUTERNAME-$timestamp"
+    $userPart = if ([string]::IsNullOrWhiteSpace($env:USERNAME)) { "user" } else { $env:USERNAME }
+    $hostPart = if ([string]::IsNullOrWhiteSpace($env:COMPUTERNAME)) { "windows" } else { $env:COMPUTERNAME }
+    $Comment = "$userPart@$hostPart-$timestamp"
 }
 
 $outDir = Join-Path $Out "ssh-keyzip-$timestamp"
@@ -69,109 +175,49 @@ $zipPath = Join-Path $Out "ssh-keyzip-$timestamp.zip"
 
 New-Item -ItemType Directory -Path $outDir -Force | Out-Null
 
-if ((Test-Path $keyPath) -or (Test-Path $pubPath)) {
+if ((Test-Path -LiteralPath $keyPath) -or (Test-Path -LiteralPath $pubPath)) {
     throw "Refusing to overwrite existing key files: $outDir"
 }
 
-$passphrase = ""
+$passphrase = [Environment]::GetEnvironmentVariable("SSH_KEY_PASSPHRASE")
+if ($null -eq $passphrase) {
+    $passphrase = ""
+}
+
 if ($AskPassphrase) {
     $secure1 = Read-Host "Enter passphrase for the private key, or leave empty" -AsSecureString
     $secure2 = Read-Host "Enter same passphrase again" -AsSecureString
+
     $bstr1 = [Runtime.InteropServices.Marshal]::SecureStringToBSTR($secure1)
     $bstr2 = [Runtime.InteropServices.Marshal]::SecureStringToBSTR($secure2)
+
     try {
         $plain1 = [Runtime.InteropServices.Marshal]::PtrToStringBSTR($bstr1)
         $plain2 = [Runtime.InteropServices.Marshal]::PtrToStringBSTR($bstr2)
+
         if ($plain1 -ne $plain2) {
             throw "Passphrases do not match."
         }
-        $passphrase = $plain1
+
+        if ($null -eq $plain1) {
+            $passphrase = ""
+        }
+        else {
+            $passphrase = $plain1
+        }
     }
     finally {
-        if ($bstr1 -ne [IntPtr]::Zero) { [Runtime.InteropServices.Marshal]::ZeroFreeBSTR($bstr1) }
-        if ($bstr2 -ne [IntPtr]::Zero) { [Runtime.InteropServices.Marshal]::ZeroFreeBSTR($bstr2) }
+        if ($bstr1 -ne [IntPtr]::Zero) {
+            [Runtime.InteropServices.Marshal]::ZeroFreeBSTR($bstr1)
+        }
+
+        if ($bstr2 -ne [IntPtr]::Zero) {
+            [Runtime.InteropServices.Marshal]::ZeroFreeBSTR($bstr2)
+        }
     }
 }
 
-function ConvertTo-ProcessArgument {
-    param(
-        [AllowEmptyString()]
-        [string]$Value
-    )
-
-    if ($null -eq $Value -or $Value.Length -eq 0) {
-        return '""'
-    }
-
-    if ($Value -notmatch '[\s"]') {
-        return $Value
-    }
-
-    $builder = New-Object System.Text.StringBuilder
-    [void]$builder.Append('"')
-    $backslashCount = 0
-
-    foreach ($char in $Value.ToCharArray()) {
-        if ($char -eq '\') {
-            $backslashCount++
-            continue
-        }
-
-        if ($char -eq '"') {
-            if ($backslashCount -gt 0) {
-                [void]$builder.Append(('\' * ($backslashCount * 2 + 1)))
-                $backslashCount = 0
-            }
-            else {
-                [void]$builder.Append('\')
-            }
-            [void]$builder.Append('"')
-            continue
-        }
-
-        if ($backslashCount -gt 0) {
-            [void]$builder.Append(('\' * $backslashCount))
-            $backslashCount = 0
-        }
-        [void]$builder.Append($char)
-    }
-
-    if ($backslashCount -gt 0) {
-        [void]$builder.Append(('\' * ($backslashCount * 2)))
-    }
-
-    [void]$builder.Append('"')
-    return $builder.ToString()
-}
-
-function Invoke-SshKeygen {
-    param(
-        [Parameter(Mandatory=$true)][string]$FileName,
-        [Parameter(Mandatory=$true)][string[]]$Arguments
-    )
-
-    $psi = New-Object System.Diagnostics.ProcessStartInfo
-    $psi.FileName = $FileName
-    $psi.Arguments = ($Arguments | ForEach-Object { ConvertTo-ProcessArgument $_ }) -join " "
-    $psi.UseShellExecute = $false
-    $psi.RedirectStandardOutput = $true
-    $psi.RedirectStandardError = $true
-
-    $process = New-Object System.Diagnostics.Process
-    $process.StartInfo = $psi
-    [void]$process.Start()
-    $stdout = $process.StandardOutput.ReadToEnd()
-    $stderr = $process.StandardError.ReadToEnd()
-    $process.WaitForExit()
-
-    if ($process.ExitCode -ne 0) {
-        if (-not [string]::IsNullOrWhiteSpace($stdout)) { Write-Host $stdout }
-        if (-not [string]::IsNullOrWhiteSpace($stderr)) { Write-Host $stderr }
-        throw "ssh-keygen failed with exit code $($process.ExitCode)."
-    }
-}
-
-Invoke-SshKeygen -FileName $sshKeygen.Source -Arguments @(
+$sshArgs = @(
     "-t", "ed25519",
     "-a", "100",
     "-C", $Comment,
@@ -179,12 +225,23 @@ Invoke-SshKeygen -FileName $sshKeygen.Source -Arguments @(
     "-N", $passphrase
 )
 
-if (!(Test-Path $keyPath) -or !(Test-Path $pubPath)) {
+try {
+    Invoke-NativeCommand -FileName $sshKeygen.Source -ArgumentList $sshArgs
+}
+catch {
+    if ((Test-Path -LiteralPath $outDir) -and -not (Get-ChildItem -LiteralPath $outDir -Force -ErrorAction SilentlyContinue)) {
+        Remove-Item -LiteralPath $outDir -Force -ErrorAction SilentlyContinue
+    }
+
+    throw
+}
+
+if (!(Test-Path -LiteralPath $keyPath) -or !(Test-Path -LiteralPath $pubPath)) {
     throw "Key generation failed. No key files were created."
 }
 
 try {
-    icacls $keyPath /inheritance:r /grant:r "$env:USERNAME`:R" | Out-Null
+    & icacls.exe $keyPath /inheritance:r /grant:r "$($env:USERNAME):R" | Out-Null
 }
 catch {
     # Best effort only. Some Windows environments do not allow icacls changes here.
@@ -192,7 +249,7 @@ catch {
 
 $zipCreated = $false
 if (-not $NoZip) {
-    New-ZipArchiveCompat -SourceDir $outDir -ZipPath $zipPath
+    New-KeyZip -PrivateKeyPath $keyPath -PublicKeyPath $pubPath -ZipPath $zipPath
     $zipCreated = $true
 }
 
@@ -202,11 +259,13 @@ Write-Host ""
 Write-Host "Folder:      $outDir"
 Write-Host "Private key: $keyPath"
 Write-Host "Public key:  $pubPath"
+
 if ($zipCreated) {
     Write-Host "ZIP:         $zipPath"
 }
+
 Write-Host ""
 Write-Host "Public key:"
-Get-Content $pubPath
+Get-Content -LiteralPath $pubPath
 Write-Host ""
 Write-Host "Keep id_ed25519 private. Share only id_ed25519.pub."

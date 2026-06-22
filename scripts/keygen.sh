@@ -1,7 +1,6 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-PROJECT_NAME="SSH-KeyZip"
 MAKE_ZIP=1
 OUT_BASE=""
 COMMENT=""
@@ -30,14 +29,27 @@ Security:
 USAGE
 }
 
+require_option_value() {
+  option_name="$1"
+  option_value="${2-}"
+
+  if [[ -z "$option_value" ]]; then
+    echo "Missing value for $option_name" >&2
+    usage >&2
+    exit 2
+  fi
+}
+
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --out)
-      OUT_BASE="${2:-}"
+      require_option_value "$1" "${2-}"
+      OUT_BASE="$2"
       shift 2
       ;;
     --comment)
-      COMMENT="${2:-}"
+      require_option_value "$1" "${2-}"
+      COMMENT="$2"
       shift 2
       ;;
     --no-zip)
@@ -71,15 +83,20 @@ need_cmd ssh-keygen
 need_cmd date
 
 if [[ -z "$OUT_BASE" ]]; then
-  HOME_DIR="${HOME:-}"
-  if [[ -n "$HOME_DIR" && -d "$HOME_DIR/Desktop" ]]; then
-    OUT_BASE="$HOME_DIR/Desktop"
+  home_dir="${HOME:-}"
+  if [[ -n "$home_dir" && -d "$home_dir/Desktop" ]]; then
+    OUT_BASE="$home_dir/Desktop"
   else
     OUT_BASE="$PWD"
   fi
 fi
 
 mkdir -p "$OUT_BASE"
+
+if [[ ! -d "$OUT_BASE" || ! -w "$OUT_BASE" ]]; then
+  echo "Output directory is not writable: $OUT_BASE" >&2
+  exit 1
+fi
 
 ts="$(date +%Y%m%d-%H%M%S)"
 user_name="${USER:-user}"
@@ -96,6 +113,11 @@ zip_path="$OUT_BASE/ssh-keyzip-$ts.zip"
 
 mkdir -p "$out_dir"
 chmod 700 "$out_dir" 2>/dev/null || true
+
+if [[ -e "$key_path" || -e "$pub_path" ]]; then
+  echo "Refusing to overwrite existing key files: $out_dir" >&2
+  exit 1
+fi
 
 if [[ "$ASK_PASSPHRASE" -eq 1 ]]; then
   printf "Enter passphrase for the private key, or leave empty: "
@@ -116,12 +138,12 @@ if [[ "$ASK_PASSPHRASE" -eq 1 ]]; then
   PASSPHRASE="$pass1"
 fi
 
-if [[ -e "$key_path" || -e "$pub_path" ]]; then
-  echo "Refusing to overwrite existing key files: $out_dir" >&2
+if ! ssh-keygen -t ed25519 -a 100 -C "$COMMENT" -f "$key_path" -N "$PASSPHRASE" >/dev/null; then
+  rmdir "$out_dir" 2>/dev/null || true
+  echo "Key generation failed." >&2
   exit 1
 fi
 
-ssh-keygen -t ed25519 -a 100 -C "$COMMENT" -f "$key_path" -N "$PASSPHRASE" >/dev/null
 chmod 600 "$key_path" 2>/dev/null || true
 chmod 644 "$pub_path" 2>/dev/null || true
 
@@ -133,20 +155,23 @@ fi
 zip_created=0
 if [[ "$MAKE_ZIP" -eq 1 ]]; then
   rm -f "$zip_path"
+
   if command -v zip >/dev/null 2>&1; then
-    (cd "$out_dir" && zip -q "$zip_path" id_ed25519 id_ed25519.pub)
+    zip -j -q "$zip_path" "$key_path" "$pub_path"
     zip_created=1
   elif command -v python3 >/dev/null 2>&1; then
-    python3 - "$out_dir" "$zip_path" <<'PY'
+    python3 - "$key_path" "$pub_path" "$zip_path" <<'PY'
 import pathlib
 import sys
 import zipfile
 
-out_dir = pathlib.Path(sys.argv[1])
-zip_path = pathlib.Path(sys.argv[2])
+private_key = pathlib.Path(sys.argv[1])
+public_key = pathlib.Path(sys.argv[2])
+zip_path = pathlib.Path(sys.argv[3])
+
 with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_DEFLATED) as archive:
-    for name in ("id_ed25519", "id_ed25519.pub"):
-        archive.write(out_dir / name, arcname=name)
+    archive.write(private_key, arcname="id_ed25519")
+    archive.write(public_key, arcname="id_ed25519.pub")
 PY
     zip_created=1
   else

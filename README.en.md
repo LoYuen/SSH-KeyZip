@@ -23,23 +23,21 @@ Private keys are created locally only. The scripts do not upload keys or create 
 - Custom output directory
 - Custom key comment
 - Optional private key passphrase
-- No overwrite of existing `~/.ssh` keys
+- Does not write to or overwrite existing `~/.ssh` keys
 - No upload, hosting, or external transmission of private keys
 
 ## One-line usage
 
-Replace `YOUR_GITHUB_NAME` and `SSH-KeyZip` with your GitHub username and repository name.
-
 ### Windows PowerShell
 
 ```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -Command "irm https://raw.githubusercontent.com/YOUR_GITHUB_NAME/SSH-KeyZip/main/scripts/keygen.ps1 | iex"
+$url = 'https://raw.githubusercontent.com/LoYuen/SSH-KeyZip/main/scripts/keygen.ps1'; $path = Join-Path $env:TEMP 'ssh-keyzip.ps1'; Invoke-WebRequest -UseBasicParsing -Uri $url -OutFile $path; powershell -NoProfile -ExecutionPolicy Bypass -File $path
 ```
 
 ### macOS / Linux / VPS
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/YOUR_GITHUB_NAME/SSH-KeyZip/main/scripts/keygen.sh | bash
+curl -fsSL https://raw.githubusercontent.com/LoYuen/SSH-KeyZip/main/scripts/keygen.sh | bash
 ```
 
 ## Local usage
@@ -87,6 +85,12 @@ bash scripts/keygen.sh --no-zip
 bash scripts/keygen.sh --out "$HOME/Desktop"
 bash scripts/keygen.sh --comment "me@my-laptop"
 bash scripts/keygen.sh --ask-passphrase
+```
+
+You can also pass a passphrase through an environment variable:
+
+```bash
+SSH_KEY_PASSPHRASE='your-passphrase' bash scripts/keygen.sh
 ```
 
 ## Security

@@ -93,7 +93,91 @@ if ($AskPassphrase) {
     }
 }
 
-& $sshKeygen.Source -t ed25519 -a 100 -C $Comment -f $keyPath -N $passphrase | Out-Null
+function ConvertTo-ProcessArgument {
+    param(
+        [AllowEmptyString()]
+        [string]$Value
+    )
+
+    if ($null -eq $Value -or $Value.Length -eq 0) {
+        return '""'
+    }
+
+    if ($Value -notmatch '[\s"]') {
+        return $Value
+    }
+
+    $builder = New-Object System.Text.StringBuilder
+    [void]$builder.Append('"')
+    $backslashCount = 0
+
+    foreach ($char in $Value.ToCharArray()) {
+        if ($char -eq '\') {
+            $backslashCount++
+            continue
+        }
+
+        if ($char -eq '"') {
+            if ($backslashCount -gt 0) {
+                [void]$builder.Append(('\' * ($backslashCount * 2 + 1)))
+                $backslashCount = 0
+            }
+            else {
+                [void]$builder.Append('\')
+            }
+            [void]$builder.Append('"')
+            continue
+        }
+
+        if ($backslashCount -gt 0) {
+            [void]$builder.Append(('\' * $backslashCount))
+            $backslashCount = 0
+        }
+        [void]$builder.Append($char)
+    }
+
+    if ($backslashCount -gt 0) {
+        [void]$builder.Append(('\' * ($backslashCount * 2)))
+    }
+
+    [void]$builder.Append('"')
+    return $builder.ToString()
+}
+
+function Invoke-SshKeygen {
+    param(
+        [Parameter(Mandatory=$true)][string]$FileName,
+        [Parameter(Mandatory=$true)][string[]]$Arguments
+    )
+
+    $psi = New-Object System.Diagnostics.ProcessStartInfo
+    $psi.FileName = $FileName
+    $psi.Arguments = ($Arguments | ForEach-Object { ConvertTo-ProcessArgument $_ }) -join " "
+    $psi.UseShellExecute = $false
+    $psi.RedirectStandardOutput = $true
+    $psi.RedirectStandardError = $true
+
+    $process = New-Object System.Diagnostics.Process
+    $process.StartInfo = $psi
+    [void]$process.Start()
+    $stdout = $process.StandardOutput.ReadToEnd()
+    $stderr = $process.StandardError.ReadToEnd()
+    $process.WaitForExit()
+
+    if ($process.ExitCode -ne 0) {
+        if (-not [string]::IsNullOrWhiteSpace($stdout)) { Write-Host $stdout }
+        if (-not [string]::IsNullOrWhiteSpace($stderr)) { Write-Host $stderr }
+        throw "ssh-keygen failed with exit code $($process.ExitCode)."
+    }
+}
+
+Invoke-SshKeygen -FileName $sshKeygen.Source -Arguments @(
+    "-t", "ed25519",
+    "-a", "100",
+    "-C", $Comment,
+    "-f", $keyPath,
+    "-N", $passphrase
+)
 
 if (!(Test-Path $keyPath) -or !(Test-Path $pubPath)) {
     throw "Key generation failed. No key files were created."
